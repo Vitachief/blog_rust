@@ -1,0 +1,6 @@
+/target
+.env
+.blog_token
+Cargo.lock
+*.wasm
+pkg/
