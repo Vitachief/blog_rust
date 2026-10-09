@@ -13,8 +13,14 @@ pub async fn jwt_validator(
     req: ServiceRequest,
     credentials: BearerAuth,
 ) -> Result<ServiceRequest, (Error, ServiceRequest)> {
-    let jwt_service_data = req.app_data::<web::Data<Arc<JwtService>>>()
-        .expect("JwtService не найден в app_data. Проверьте инициализацию в main.rs");
+    // Безопасное извлечение JwtService без паники
+    let jwt_service_data = match req.app_data::<web::Data<Arc<JwtService>>>() {
+        Some(service) => service,
+        None => {
+            tracing::error!("JwtService не найден в app_data. Проверьте инициализацию в main.rs");
+            return Err((actix_web::error::ErrorInternalServerError("Server configuration error"), req));
+        }
+    };
 
     match jwt_service_data.verify_token(credentials.token()) {
         Ok(claims) => {

@@ -14,9 +14,6 @@ pub mod proto {
     tonic::include_proto!("blog");
 }
 
-const HTTP_ADDR: &str = "127.0.0.1:8080";
-const GRPC_ADDR: &str = "127.0.0.1:50051";
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();

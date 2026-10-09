@@ -38,6 +38,7 @@ pub struct Post {
     pub title: String,
     pub content: String,
     pub author_id: i64,
+    pub author_name: String,
     pub created_at: String,
 }
 

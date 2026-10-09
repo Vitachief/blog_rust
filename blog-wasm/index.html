@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Blog WASM Frontend</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .section { margin-bottom: 2rem; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+        input, textarea, button { margin: 0.5rem 0; padding: 0.5rem; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .error { color: red; }
+        .post { border-bottom: 1px solid #eee; padding: 1rem 0; }
+        .post.my-post {
+            background: #f0f9ff;
+            border-left: 4px solid #007bff;
+            padding-left: 0.8rem;
+            margin-left: -1rem;
+            padding-right: 0.2rem;
+            margin-right: -0.2rem;
+        }
+        .post-actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+        .post-actions button { width: auto; margin: 0; padding: 0.3rem 0.8rem; font-size: 0.9rem; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .hidden { display: none; }
+        .author-badge {
+            background: #d4edda;
+            color: #155724;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        #auth-status { 
+            padding: 0.5rem; 
+            margin-bottom: 1rem; 
+            background: #f8f9fa; 
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #logout-btn { 
+            width: auto; 
+            margin: 0;
+            padding: 0.5rem 1rem;
+        }
+        #edit-section {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <h1>Rust WASM Blog</h1>
+    
+    <div id="auth-status">
+        <span>Статус: <strong id="status-text">Не авторизован</strong></span>
+        <button id="logout-btn" class="hidden" onclick="logout()">Выйти</button>
+    </div>
+
+    <div id="auth-section" class="section">
+        <h3>Вход / Регистрация</h3>
+        <input type="text" id="username" placeholder="Имя пользователя">
+        <input type="password" id="password" placeholder="Пароль">
+        <input type="email" id="email" placeholder="Email (только для регистрации)">
+        <button onclick="doLogin()">Войти</button>
+        <button onclick="doRegister()">Зарегистрироваться</button>
+        <p id="auth-error" class="error"></p>
+    </div>
+
+    <div id="create-post-section" class="section hidden">
+        <h3>Создать пост</h3>
+        <input type="text" id="post-title" placeholder="Заголовок">
+        <textarea id="post-content" rows="4" placeholder="Содержание"></textarea>
+        <button onclick="doCreatePost()">Опубликовать</button>
+        <p id="post-error" class="error"></p>
+    </div>
+
+    <div id="edit-section" class="section hidden">
+        <h3>Редактирование поста</h3>
+        <input type="hidden" id="edit-post-id">
+        <input type="text" id="edit-title" placeholder="Заголовок">
+        <textarea id="edit-content" rows="4" placeholder="Содержание"></textarea>
+        <div style="display: flex; gap: 0.5rem;">
+            <button onclick="doUpdatePost()" style="flex: 1;">Сохранить</button>
+            <button onclick="hideEditForm()" class="btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+        <p id="edit-error" class="error"></p>
+    </div>
+
+    <div class="section">
+        <h3>Посты</h3>
+        <button onclick="loadPosts()">Обновить список</button>
+        <div id="posts-container"></div>
+    </div>
+
+    <script type="module">
+        import init, { BlogApp } from './pkg/blog_wasm.js';
+
+        let app;
+
+        // Извлекает user_id из JWT-токена
+        function getCurrentUserId() {
+            const token = localStorage.getItem('blog_token');
+            if (!token) return null;
+            try {
+                const payload = token.split('.')[1];
+                const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+                const decoded = JSON.parse(atob(base64));
+                return decoded.user_id;
+            } catch (e) {
+                console.error('Не удалось декодировать токен:', e);
+                return null;
+            }
+        }
+
+        // Извлекает username из JWT-токена
+        function getCurrentUsername() {
+            const token = localStorage.getItem('blog_token');
+            if (!token) return null;
+            try {
+                const payload = token.split('.')[1];
+                const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+                const decoded = JSON.parse(atob(base64));
+                return decoded.username || 'пользователь';
+            } catch (e) {
+                console.error('Не удалось декодировать токен:', e);
+                return 'пользователь';
+            }
+        }
+
+        async function run() {
+            await init();
+            app = new BlogApp("http://127.0.0.1:8080");
+            updateAuthUI();
+            loadPosts();
+        }
+
+        window.updateAuthUI = function() {
+            const isAuth = app.is_authenticated();
+            
+            if (isAuth) {
+                const username = getCurrentUsername();
+                document.getElementById('status-text').innerText = `Добро пожаловать, ${username}`;
+            } else {
+                document.getElementById('status-text').innerText = "Не авторизован";
+            }
+            
+            document.getElementById('logout-btn').classList.toggle('hidden', !isAuth);
+            document.getElementById('auth-section').classList.toggle('hidden', isAuth);
+            document.getElementById('create-post-section').classList.toggle('hidden', !isAuth);
+            
+            if (!isAuth) {
+                hideEditForm();
+            }
+        }
+
+        window.doLogin = async function() {
+            try {
+                const user = document.getElementById('username').value;
+                const pass = document.getElementById('password').value;
+                await app.login(user, pass);
+                document.getElementById('auth-error').innerText = "";
+                updateAuthUI();
+                loadPosts(); // Перезагружаем посты, чтобы обновить кнопки "своих" постов
+                alert("Успешный вход!");
+            } catch (e) {
+                document.getElementById('auth-error').innerText = e;
+            }
+        }
+
+        window.doRegister = async function() {
+            try {
+                const user = document.getElementById('username').value;
+                const pass = document.getElementById('password').value;
+                const email = document.getElementById('email').value;
+                await app.register(user, email, pass);
+                document.getElementById('auth-error').innerText = "";
+                updateAuthUI();
+                loadPosts();
+                alert("Успешная регистрация!");
+            } catch (e) {
+                document.getElementById('auth-error').innerText = e;
+            }
+        }
+
+        window.logout = function() {
+            app.clear_token();
+            updateAuthUI();
+            loadPosts(); // Перезагружаем посты, чтобы убрать кнопки
+            alert("Вы вышли из системы");
+        }
+
+        window.loadPosts = async function() {
+            try {
+                const posts = await app.load_posts();
+                const container = document.getElementById('posts-container');
+                container.innerHTML = "";
+                
+                if (posts.length === 0) {
+                    container.innerHTML = "<p>Постов пока нет</p>";
+                    return;
+                }
+                
+                const isAuth = app.is_authenticated();
+                const currentUserId = isAuth ? getCurrentUserId() : null;
+                
+                posts.forEach(post => {
+                    const isAuthor = isAuth && post.author_id === currentUserId;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'post' + (isAuthor ? ' my-post' : '');
+                    
+                    const authorBadge = isAuthor 
+                        ? '<span class="author-badge">Ваш пост</span>' 
+                        : '';
+                    
+                    div.innerHTML = `
+                        <h4>${post.title}</h4>
+                        <p>${post.content}</p>
+                        <small>Автор: ${post.author_name}${authorBadge} | ${post.created_at}</small>
+                    `;
+                    
+                    if (isAuthor) {
+                        const actions = document.createElement('div');
+                        actions.className = 'post-actions';
+                        
+                        const editBtn = document.createElement('button');
+                        editBtn.innerText = "Редактировать";
+                        editBtn.className = "btn-warning";
+                        editBtn.onclick = () => showEditForm(post.id, post.title, post.content);
+                        
+                        const delBtn = document.createElement('button');
+                        delBtn.innerText = "Удалить";
+                        delBtn.className = "btn-danger";
+                        delBtn.onclick = async () => {
+                            if (!confirm(`Удалить пост "${post.title}"?`)) return;
+                            try {
+                                await app.delete_post(post.id);
+                                loadPosts();
+                            } catch (e) {
+                                alert("Ошибка удаления: " + e);
+                            }
+                        };
+                        
+                        actions.appendChild(editBtn);
+                        actions.appendChild(delBtn);
+                        div.appendChild(actions);
+                    }
+                    
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                console.error(e);
+                document.getElementById('posts-container').innerHTML = `<p class="error">Ошибка загрузки: ${e}</p>`;
+            }
+        }
+
+        window.doCreatePost = async function() {
+            try {
+                const title = document.getElementById('post-title').value;
+                const content = document.getElementById('post-content').value;
+                
+                if (!title || !content) {
+                    document.getElementById('post-error').innerText = "Заполните все поля";
+                    return;
+                }
+                
+                await app.create_post(title, content);
+                document.getElementById('post-error').innerText = "";
+                document.getElementById('post-title').value = "";
+                document.getElementById('post-content').value = "";
+                loadPosts();
+            } catch (e) {
+                document.getElementById('post-error').innerText = e;
+            }
+        }
+
+        window.showEditForm = function(id, title, content) {
+            document.getElementById('edit-post-id').value = id;
+            document.getElementById('edit-title').value = title;
+            document.getElementById('edit-content').value = content;
+            document.getElementById('edit-error').innerText = "";
+            document.getElementById('edit-section').classList.remove('hidden');
+            
+            document.getElementById('edit-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        window.hideEditForm = function() {
+            document.getElementById('edit-section').classList.add('hidden');
+            document.getElementById('edit-post-id').value = "";
+            document.getElementById('edit-title').value = "";
+            document.getElementById('edit-content').value = "";
+            document.getElementById('edit-error').innerText = "";
+        }
+
+        window.doUpdatePost = async function() {
+            try {
+                const id = parseFloat(document.getElementById('edit-post-id').value);
+                const title = document.getElementById('edit-title').value;
+                const content = document.getElementById('edit-content').value;
+                
+                if (!title || !content) {
+                    document.getElementById('edit-error').innerText = "Заполните все поля";
+                    return;
+                }
+                
+                await app.update_post(id, title, content);
+                document.getElementById('edit-error').innerText = "";
+                hideEditForm();
+                loadPosts();
+                alert("Пост успешно обновлён!");
+            } catch (e) {
+                document.getElementById('edit-error').innerText = e;
+            }
+        }
+
+        run();
+    </script>
+</body>
+</html>

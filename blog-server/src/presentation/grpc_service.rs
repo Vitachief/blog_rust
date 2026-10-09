@@ -47,6 +47,7 @@ impl BlogGrpcService {
             title: post.title.clone(),
             content: post.content.clone(),
             author_id: post.author_id,
+            author_name: post.author_name.clone(),
             created_at: post.created_at.to_rfc3339(),
         }
     }

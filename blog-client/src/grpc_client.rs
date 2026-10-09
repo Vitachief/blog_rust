@@ -60,6 +60,7 @@ impl GrpcClient {
             title: proto_post.title,
             content: proto_post.content,
             author_id: proto_post.author_id,
+            author_name: proto_post.author_name,
             created_at: proto_post.created_at,
         }
     }

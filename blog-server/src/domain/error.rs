@@ -2,8 +2,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("User not found")]
-    UserNotFound,
     #[error("User already exists")]
     UserAlreadyExists,
     #[error("Invalid credentials")]
@@ -24,7 +22,7 @@ impl actix_web::ResponseError for AppError {
             AppError::UserAlreadyExists => actix_web::http::StatusCode::CONFLICT,
             AppError::InvalidCredentials | AppError::Jwt(_) => actix_web::http::StatusCode::UNAUTHORIZED,
             AppError::Forbidden => actix_web::http::StatusCode::FORBIDDEN,
-            AppError::UserNotFound | AppError::PostNotFound => actix_web::http::StatusCode::NOT_FOUND,
+            AppError::PostNotFound => actix_web::http::StatusCode::NOT_FOUND,
             _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
